@@ -97,10 +97,7 @@ class FileNameFormatter:
 
     def _convert_timestamp(self, timestamp: float) -> str:
         input_time = datetime.datetime.fromtimestamp(timestamp)
-        if self.time_format_string.upper().strip() == "ISO":
-            return input_time.isoformat()
-        else:
-            return input_time.strftime(self.time_format_string)
+        return input_time.isoformat()
 
     def _generate_name_dict_from_comment(self, comment: Comment) -> dict:
         comment_attributes = {
