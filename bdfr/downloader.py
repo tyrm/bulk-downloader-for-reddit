@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import hashlib
+import json
 import logging.handlers
 import os
 import time
@@ -35,12 +36,21 @@ def _calc_hash(existing_file: Path):
     file_hash = md5_hash.hexdigest()
     return existing_file, file_hash
 
-
 class RedditDownloader(RedditConnector):
     def __init__(self, args: Configuration, logging_handlers: Iterable[logging.Handler] = ()):
         super(RedditDownloader, self).__init__(args, logging_handlers)
         if self.args.search_existing:
-            self.master_hash_list = self.scan_existing_files(self.download_directory)
+            if self.args.no_dupes_cache:
+                if self._hashcache_exists():
+                    logger.info(f"Reading hash cache file")
+                    self.master_hash_list = self._read_hashcache()
+                else:
+                    hash_list = self.scan_existing_files(self.download_directory)
+                    logger.info(f"Writing hash cache file")
+                    self._write_hashcache(hash_list)
+                    self.master_hash_list = hash_list
+            else:
+                self.master_hash_list = self.scan_existing_files(self.download_directory)
 
     def download(self):
         for generator in self.reddit_lists:
@@ -54,6 +64,10 @@ class RedditDownloader(RedditConnector):
                 logger.error(f"The submission after {submission.id} failed to download due to a PRAW exception: {e}")
                 logger.debug("Waiting 60 seconds to continue")
                 sleep(60)
+
+        if self.args.no_dupes_cache:
+            logger.info(f"Writing hash cache file")
+            self._write_hashcache(self.master_hash_list)
 
     def _download_submission(self, submission: praw.models.Submission):
         if submission.id in self.excluded_submission_ids:
@@ -152,6 +166,21 @@ class RedditDownloader(RedditConnector):
             self.master_hash_list[resource_hash] = destination
             logger.debug(f"Hash added to master list: {resource_hash}")
         logger.info(f"Downloaded submission {submission.id} from {submission.subreddit.display_name}")
+
+    def _write_hashcache(self, data_dict):
+        with open(self.args.no_dupes_cache_path, 'w') as json_file:
+            serialized_hash_list = {filehash: str(path) for filehash, path in data_dict.items()}
+            json.dump(serialized_hash_list, json_file)
+
+    def _read_hashcache(self):
+        with open(self.args.no_dupes_cache_path, 'r') as json_file:
+            hash_list = json.load(json_file)
+            logger.info(f"Read {len(hash_list)} hashes from hash cache")
+            deserialized_hash_list = {filehash: str(path) for filehash, path in hash_list.items()}
+            return deserialized_hash_list
+
+    def _hashcache_exists(self):
+        return os.path.exists(self.args.no_dupes_cache_path)
 
     @staticmethod
     def scan_existing_files(directory: Path) -> dict[str, Path]:
