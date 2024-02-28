@@ -51,6 +51,9 @@ class RedditDownloader(RedditConnector):
                     self.master_hash_list = hash_list
             else:
                 self.master_hash_list = self.scan_existing_files(self.download_directory)
+                if self.args.no_dupes_cache:
+                    logger.info(f"Writing hash cache file")
+                    self._write_hashcache(self.master_hash_list)
 
     def download(self):
         for generator in self.reddit_lists:
@@ -64,10 +67,6 @@ class RedditDownloader(RedditConnector):
                 logger.error(f"The submission after {submission.id} failed to download due to a PRAW exception: {e}")
                 logger.debug("Waiting 60 seconds to continue")
                 sleep(60)
-
-        if self.args.no_dupes_cache:
-            logger.info(f"Writing hash cache file")
-            self._write_hashcache(self.master_hash_list)
 
     def _download_submission(self, submission: praw.models.Submission):
         if submission.id in self.excluded_submission_ids:
@@ -165,6 +164,9 @@ class RedditDownloader(RedditConnector):
             os.utime(destination, (creation_time, creation_time))
             self.master_hash_list[resource_hash] = destination
             logger.debug(f"Hash added to master list: {resource_hash}")
+            if self.args.no_dupes_cache:
+                logger.info(f"Writing hash cache file")
+                self._write_hashcache(self.master_hash_list)
         logger.info(f"Downloaded submission {submission.id} from {submission.subreddit.display_name}")
 
     def _write_hashcache(self, data_dict):
