@@ -34,6 +34,9 @@ class Configuration(Namespace):
         self.max_wait_time = None
         self.multireddit: list[str] = []
         self.no_dupes: bool = False
+        self.no_dupes_redis: bool = False
+        self.no_dupes_redis_address: str = "localhost"
+        self.no_dupes_redis_port: int = 6379
         self.saved: bool = False
         self.search: Optional[str] = None
         self.search_existing: bool = False
