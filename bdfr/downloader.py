@@ -42,7 +42,7 @@ class RedditDownloader(RedditConnector):
         super(RedditDownloader, self).__init__(args, logging_handlers)
         if self.args.search_existing:
             if self.args.no_dupes_redis:
-                self.redis = redis.Redis(host='localhost', port=6379, decode_responses=True)
+                self.redis = redis.Redis(host=self.args.no_dupes_redis_address, port=self.args.no_dupes_redis_port, decode_responses=True)
             else:
                 self.master_hash_list = self.scan_existing_files(self.download_directory)
 
@@ -172,10 +172,21 @@ class RedditDownloader(RedditConnector):
         return hash_list
 
     def _cache_check(self, resource_hash):
+        if self.args.no_dupes_redis:
+            exists = self.redis.exists(resource_hash)
+            return exists > 0
+
         return resource_hash in self.master_hash_list
 
     def _cache_get(self, resource_hash):
+        if self.args.no_dupes_redis:
+            return self.redis.get(resource_hash)
+
         return self.master_hash_list[resource_hash]
 
     def _cache_set(self, resource_hash, destination):
+        if self.args.no_dupes_redis:
+            self.redis.set(resource_hash, str(destination))
+            return
+
         self.master_hash_list[resource_hash] = destination
