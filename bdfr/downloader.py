@@ -4,6 +4,7 @@
 import hashlib
 import logging.handlers
 import os
+import redis
 import time
 from collections.abc import Iterable
 from datetime import datetime
@@ -40,7 +41,10 @@ class RedditDownloader(RedditConnector):
     def __init__(self, args: Configuration, logging_handlers: Iterable[logging.Handler] = ()):
         super(RedditDownloader, self).__init__(args, logging_handlers)
         if self.args.search_existing:
-            self.master_hash_list = self.scan_existing_files(self.download_directory)
+            if self.args.no_dupes_redis:
+                self.redis = redis.Redis(host=self.args.no_dupes_redis_address, port=self.args.no_dupes_redis_port, decode_responses=True)
+            else:
+                self.master_hash_list = self.scan_existing_files(self.download_directory)
 
     def download(self):
         for generator in self.reddit_lists:
@@ -125,17 +129,17 @@ class RedditDownloader(RedditConnector):
                 return
             resource_hash = res.hash.hexdigest()
             destination.parent.mkdir(parents=True, exist_ok=True)
-            if resource_hash in self.master_hash_list:
+            if self._cache_check(resource_hash):
                 if self.args.no_dupes:
                     logger.info(f"Resource hash {resource_hash} from submission {submission.id} downloaded elsewhere")
                     return
                 elif self.args.make_hard_links:
                     try:
-                        destination.hardlink_to(self.master_hash_list[resource_hash])
+                        destination.hardlink_to(self._cache_get(resource_hash))
                     except AttributeError:
-                        self.master_hash_list[resource_hash].link_to(destination)
+                        self._cache_get(resource_hash).link_to(destination)
                     logger.info(
-                        f"Hard link made linking {destination} to {self.master_hash_list[resource_hash]}"
+                        f"Hard link made linking {destination} to {self._cache_get(resource_hash)}"
                         f" in submission {submission.id}"
                     )
                     return
@@ -149,7 +153,7 @@ class RedditDownloader(RedditConnector):
                 return
             creation_time = time.mktime(datetime.fromtimestamp(submission.created_utc).timetuple())
             os.utime(destination, (creation_time, creation_time))
-            self.master_hash_list[resource_hash] = destination
+            self._cache_set(resource_hash, destination)
             logger.debug(f"Hash added to master list: {resource_hash}")
         logger.info(f"Downloaded submission {submission.id} from {submission.subreddit.display_name}")
 
@@ -166,3 +170,23 @@ class RedditDownloader(RedditConnector):
 
         hash_list = {res[1]: res[0] for res in results}
         return hash_list
+
+    def _cache_check(self, resource_hash):
+        if self.args.no_dupes_redis:
+            exists = self.redis.exists(resource_hash)
+            return exists > 0
+
+        return resource_hash in self.master_hash_list
+
+    def _cache_get(self, resource_hash):
+        if self.args.no_dupes_redis:
+            return self.redis.get(resource_hash)
+
+        return self.master_hash_list[resource_hash]
+
+    def _cache_set(self, resource_hash, destination):
+        if self.args.no_dupes_redis:
+            self.redis.set(resource_hash, str(destination))
+            return
+
+        self.master_hash_list[resource_hash] = destination
