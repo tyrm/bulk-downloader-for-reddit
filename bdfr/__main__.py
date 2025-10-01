@@ -52,6 +52,8 @@ _downloader_options = [
     click.option("--make-hard-links", is_flag=True, default=None),
     click.option("--max-wait-time", type=int, default=None),
     click.option("--no-dupes", is_flag=True, default=None),
+    click.option("--no-dupes-cache", is_flag=True, default=None),
+    click.option("--no-dupes-cache-path", default=None, type=str),
     click.option("--search-existing", is_flag=True, default=None),
     click.option("--skip", default=None, multiple=True),
     click.option("--skip-domain", default=None, multiple=True),
